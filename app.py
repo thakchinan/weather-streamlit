@@ -73,7 +73,7 @@ def default_imagenet_transform(size=224):
     return transforms.Compose([
         transforms.Resize((size, size)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 def ensure_weight(url: str) -> str:
@@ -129,7 +129,6 @@ def build_model_and_preprocess(arch_name: str, num_classes: int):
 
 def load_checkpoint_auto(local_path: str, arch_name: str, num_classes: int):
     """โหลด checkpoint แบบยืดหยุ่น: รองรับ full model หรือ state_dict"""
-    # allowlist Lightning/Fabric ถ้า torch มี safe_globals
     if lwrap is not None and HAVE_SAFE_GLOBALS:
         with safe_globals([lwrap._FabricModule]):
             obj = torch.load(local_path, map_location="cpu", weights_only=False)

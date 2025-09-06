@@ -14,22 +14,39 @@ from torchvision.models import (
     densenet121, DenseNet121_Weights
 )
 
-# ===== Lightning allowlist for torch.load (PyTorch 2.6+) =====
-from torch.serialization import add_safe_globals, safe_globals
+# ===== Lightning allowlist for torch.load (รองรับทั้ง torch เก่า/ใหม่) =====
+from contextlib import contextmanager
+try:
+    # มีใน torch 2.6+
+    from torch.serialization import add_safe_globals, safe_globals
+    HAVE_SAFE_GLOBALS = True
+except Exception:
+    # สำหรับ torch < 2.6 -> ทำ no-op fallback
+    HAVE_SAFE_GLOBALS = False
+    def add_safe_globals(_):  # no-op
+        return
+    @contextmanager
+    def safe_globals(_=None):  # no-op
+        yield
+
 try:
     import lightning.fabric.wrappers as lwrap
-    add_safe_globals([lwrap._FabricModule])  # allowlist class จาก Lightning/Fabric
+    try:
+        add_safe_globals([lwrap._FabricModule])
+    except Exception:
+        pass
 except Exception:
-    lwrap = None  # ถ้าไม่มี lightning ก็ไปต่อแบบ state_dict ได้ตามปกติ
+    lwrap = None
 
+# ===== Streamlit header =====
 st.set_page_config(page_title="Weather Models Demo", page_icon="⛅", layout="wide")
 st.title("⛅ Weather Classifier – 5 Models")
-st.caption("เลือกโมเดลจาก Sidebar → โหลด checkpoint อัตโนมัติจาก Hugging Face → อัปโหลดรูปทำนายได้เลย")
+st.caption("โหลด checkpoint จาก Hugging Face (fold=0) → เลือกสถาปัตยกรรม → อัปโหลดรูปทำนายได้เลย")
 
-# ====== Default labels ======
+# ===== Labels =====
 LABELS = ['cloudy', 'foggy', 'rainy', 'snowy', 'sunny']
 
-# ====== URL น้ำหนัก (เฉพาะ fold 0) ======
+# ===== URLs ของน้ำหนัก (เฉพาะ fold 0) =====
 WEIGHT_URLS = {
     "MobileNetV3-Large-100": "https://huggingface.co/thakchinan/weather-ckpts/resolve/main/mobilenetv3_large_100_fold0.pt",
     "EfficientNet-B0":        "https://huggingface.co/thakchinan/weather-ckpts/resolve/main/efficientnet_b0_fold0.pt",
@@ -38,12 +55,13 @@ WEIGHT_URLS = {
     "DenseNet121":            "https://huggingface.co/thakchinan/weather-ckpts/resolve/main/densenet121_fold0.pt",
 }
 
-# ====== Sidebar ======
+# ===== Sidebar =====
 st.sidebar.header("Model Settings")
 arch = st.sidebar.selectbox("Architecture", list(WEIGHT_URLS.keys()), index=2)
 device_opt = st.sidebar.selectbox("Device", ["cuda", "cpu"], index=0 if torch.cuda.is_available() else 1)
 device = torch.device(device_opt if (device_opt == "cuda" and torch.cuda.is_available()) else "cpu")
 st.sidebar.caption(f"Using **{device}**")
+
 topk = st.sidebar.slider("Top-K", 1, 5, 3)
 use_builtin_transforms = st.sidebar.checkbox("Use pretrained built-in transforms (recommended)", value=True)
 
@@ -75,37 +93,44 @@ def build_model_and_preprocess(arch_name: str, num_classes: int):
         model = resnet50(weights=weights)
         model.fc = nn.Linear(model.fc.in_features, num_classes)
         preprocess = weights.transforms() if use_builtin_transforms else default_imagenet_transform(224)
+
     elif arch_name == "MobileNetV3-Large-100":
         weights = MobileNet_V3_Large_Weights.DEFAULT
         model = mobilenet_v3_large(weights=weights)
         in_features = model.classifier[-1].in_features
         model.classifier[-1] = nn.Linear(in_features, num_classes)
         preprocess = weights.transforms() if use_builtin_transforms else default_imagenet_transform(224)
+
     elif arch_name == "EfficientNet-B0":
         weights = EfficientNet_B0_Weights.DEFAULT
         model = efficientnet_b0(weights=weights)
         in_features = model.classifier[-1].in_features
         model.classifier[-1] = nn.Linear(in_features, num_classes)
         preprocess = weights.transforms() if use_builtin_transforms else default_imagenet_transform(224)
+
     elif arch_name == "ViT-Base-Patch16-224":
         weights = ViT_B_16_Weights.DEFAULT
         model = vit_b_16(weights=weights)
         in_features = model.heads.head.in_features
         model.heads.head = nn.Linear(in_features, num_classes)
         preprocess = weights.transforms() if use_builtin_transforms else default_imagenet_transform(224)
+
     elif arch_name == "DenseNet121":
         weights = DenseNet121_Weights.DEFAULT
         model = densenet121(weights=weights)
         in_features = model.classifier.in_features
         model.classifier = nn.Linear(in_features, num_classes)
         preprocess = weights.transforms() if use_builtin_transforms else default_imagenet_transform(224)
+
     else:
         raise ValueError("Unknown architecture")
+
     return model, preprocess
 
 def load_checkpoint_auto(local_path: str, arch_name: str, num_classes: int):
-    # อ่าน checkpoint โดย allowlist Lightning/Fabric ถ้ามี
-    if lwrap is not None:
+    """โหลด checkpoint แบบยืดหยุ่น: รองรับ full model หรือ state_dict"""
+    # allowlist Lightning/Fabric ถ้า torch มี safe_globals
+    if lwrap is not None and HAVE_SAFE_GLOBALS:
         with safe_globals([lwrap._FabricModule]):
             obj = torch.load(local_path, map_location="cpu", weights_only=False)
     else:
@@ -124,6 +149,7 @@ def load_checkpoint_auto(local_path: str, arch_name: str, num_classes: int):
             if k in state and isinstance(state[k], dict):
                 state = state[k]
                 break
+
         new_state = {}
         for k, v in state.items():
             nk = k
@@ -131,6 +157,7 @@ def load_checkpoint_auto(local_path: str, arch_name: str, num_classes: int):
                 if nk.startswith(prefix):
                     nk = nk[len(prefix):]
             new_state[nk] = v
+
         model, preprocess = build_model_and_preprocess(arch_name, len(LABELS))
         missing, unexpected = model.load_state_dict(new_state, strict=False)
         return model, preprocess, f"state_dict (missing {len(missing)}, unexpected {len(unexpected)})"

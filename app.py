@@ -203,7 +203,7 @@ else:
         img = Image.open(f).convert("RGB")
         res, elapsed = predict_one(img)
         with cols[i % len(cols)]:
-            st.image(img, caption=f.name, use_container_width=True)
+            st.image(img, caption=f.name, use_column_width=True)
             st.caption(f"⏱ {elapsed:.3f}s")
             for r, (name, p) in enumerate(res, start=1):
                 st.write(f"{r}. **{name}** — {p*100:.2f}%")

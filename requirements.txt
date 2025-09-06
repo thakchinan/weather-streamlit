@@ -1,11 +1,13 @@
-streamlit==1.36.0
-
-# ใช้ wheel ของ PyTorch สำหรับ CPU โดยตรง (เสถียรบน Streamlit Cloud)
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-timm==0.9.16
-pillow
+streamlit==1.36.0
+
+# ใช้ CPU wheels ที่ขึ้นง่ายบน Streamlit Cloud
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
+
+timm==0.9.12
+pillow==10.4.0
 requests
-numpy<2
+numpy==1.26.4
+typing_extensions==4.9.0

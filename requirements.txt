@@ -1,5 +1,6 @@
 streamlit==1.36.0
-# ติดตั้ง PyTorch/torchvision แบบ CPU ล้วนจาก index ของ PyTorch
+
+# ใช้ wheel ของ PyTorch สำหรับ CPU โดยตรง (เสถียรบน Streamlit Cloud)
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
